@@ -1,9 +1,7 @@
 from ze import *
 import os
 import random
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-
 
 if __name__ == "__main__":
     set_cuda()
@@ -13,13 +11,13 @@ if __name__ == "__main__":
     # Control Variables
     N_training = 1000
     N_data = int(1.2*N_training)
-    iterations = 200
-    random.seed(0)
-    torch.manual_seed(123)
+    iterations = 20000
+    # random.seed(0)
+    # torch.manual_seed(123)
     infe = 1.5
     supe = 1.5
-    lambda1 = 10**2
-    T_TEST = 4000
+    lambda1 = 10**3
+    T_TEST = 4500
     figs = 99
     NOISE = 0.00/100.0 # 0.01 % 
  
@@ -51,6 +49,7 @@ if __name__ == "__main__":
     t_obs_np =  X_star[ind,0]
     t_obs =  torch.tensor(t_obs_np, dtype = torch.float).view(-1,1)
     u_obs = torch.tensor(u_star[ind,:]) + NOISE*torch.randn_like(torch.tensor(u_star[ind,:]))
+    u_obs_np = u_obs.detach().cpu().numpy()
 
     # define training points over the entire domain (PHYSICS LOSS)
     idx = np.round(np.linspace(0, X_star.shape[0] - 1, N_training)).astype(int)
@@ -60,11 +59,14 @@ if __name__ == "__main__":
     # PUTTING W_pert and V_in AS A KNWON CONSTANT VALUE:
     V_in = torch.tensor(X_star[idx,1])
     W_pert = torch.tensor(X_star[idx,2])
+    V_in_np = V_in.detach().cpu().numpy()
+    W_pert_np = W_pert.detach().cpu().numpy()
 
     # For validation
-    idc = np.round(np.linspace(0, int(inputs['Tfinal']), T_TEST)).astype(int)
+    idc = np.round(np.linspace(0, X_star.shape[0]-1, T_TEST)).astype(int)
     t_test = torch.tensor(X_star[idc,0], dtype = torch.float).view(-1,1)
     t_test_np = X_star[idc,0]
+    u_test_star_np = u_star[idc,:]
     u_test_star = torch.tensor(u_star[idc,:])
 
     # define a neural network to train
@@ -122,8 +124,10 @@ if __name__ == "__main__":
         # ----------------------------------------- compute total loss -----------------------------------------
         loss = loss1 + lambda1*loss2
 
+        # ----------------------------------------- Validation -----------------------------------------
         u_test = pinn(t_test)
         test_loss = torch.mean((u_test-u_test_star)**2)
+        # ----------------------------------------- Validation -----------------------------------------
 
         track_constants.append([
                                     J_nn.item(),
@@ -132,7 +136,6 @@ if __name__ == "__main__":
                                     L_nn.item(),
                                     R_nn.item(),
                                     Ke_nn.item()])
-
         track_losses.append([
                                 loss_f.item(),
                                 loss_g.item(),
@@ -146,44 +149,40 @@ if __name__ == "__main__":
 
         # plot the result as training progresses
         if i % figs == 0:
-
-            t_test = torch.linspace(0,int(inputs['Tfinal']),T_TEST).view(-1,1)
-            u_test = pinn(t_test).detach()
-
-            # plt.plot(t_test[:,0].detach().cpu().numpy(), u_test[:,1].detach().cpu().numpy())
-            # plt.scatter(t_obs[:,0].detach().cpu().numpy(), u_obs[:,0].detach().cpu().numpy(), label="Speed noisy observations", alpha=0.6)
-            # plt.show()
-
-            fig, ax = plt.subplots(2,1)
-            fig.set_size_inches(18.5, 10.5)
-            fig.suptitle(f"Observations and PINN approximation at iter: {i}")
-            plt.subplot(2,1,1)
-            plt.scatter(t_obs[:,0].detach().cpu().numpy(), u_obs[:,0].detach().cpu().numpy(), label="Speed noisy observations", alpha=0.6)
-            plt.plot(t_test[:,0].detach().cpu().numpy(), u_test[:,0].detach().cpu().numpy(), label="PINN solution", color="tab:green")
-            plt.legend()
-
-            plt.subplot(2,1,2)
-            plt.scatter(t_obs[:,0].detach().cpu().numpy(), u_obs[:,1].detach().cpu().numpy(), label="Current noisy observations", alpha=0.6)
-            plt.plot(t_test[:,0].detach().cpu().numpy(), u_test[:,1].detach().cpu().numpy(), label="PINN solution", color="tab:green")
-            plt.legend()
-
+            u_test_np = u_test.detach().cpu().numpy()
+            fig = save_plt(i, t_obs_np, u_obs_np, t_test_np, u_test_np, u_test_star_np, SAVE_DIR_GIF)
             file = os.path.join(SAVE_DIR_GIF,"pinn_%.8i.png"%(i+1))
             fig.savefig(file, dpi=100, facecolor="white")
             files.append(file)
             plt.close(fig)
 
         if i == 0:
-            t_test = torch.linspace(0,int(inputs['Tfinal']),T_TEST).view(-1,1)
-            u_test = pinn(t_test).detach()
-            save_plotly(i, X_star, u_star, t_obs, u_obs, t_test, u_test,SAVE_DIR)
+            u_test_np = u_test.detach().cpu().numpy()
+            save_plotly(i, X_star, u_star, t_obs_np, u_obs_np, u_test_star_np, t_test_np, u_test_np, SAVE_DIR)
 
         if i == iterations-1:
-            t_test = torch.linspace(0,int(inputs['Tfinal']),T_TEST).view(-1,1)
-            u_test = pinn(t_test).detach()
-            save_plotly(i, X_star, u_star, t_obs, u_obs, t_test, u_test,SAVE_DIR)
+            u_test_np = u_test.detach().cpu().numpy()
+            save_plotly(i, X_star, u_star, t_obs_np, u_obs_np, u_test_star_np, t_test_np, u_test_np, SAVE_DIR)
 
-            # TODO
             # Plot all final values of the equations and check its loss 
+            u_obs_hat_np = u_obs_hat.detach().cpu().numpy().squeeze()
+            w_phy_hat_np = w_phy_hat.detach().cpu().numpy().squeeze()
+            i_phy_hat_np = i_phy_hat.detach().cpu().numpy().squeeze()
+            dwdt_phy_hat_np = dwdt_phy_hat.detach().cpu().numpy().squeeze()
+            didt_phy_hat_np = didt_phy_hat.detach().cpu().numpy().squeeze()
+            d2wdt2_phy_hat_np = d2wdt2_phy_hat.detach().cpu().numpy().squeeze()
+            J_np = J_nn.item()
+            b_np = b_nn.item()
+            Kt_np = Kt_nn.item()
+            L_np = L_nn.item()
+            R_np = R_nn.item()
+            Ke_np = Ke_nn.item()
+
+            deep_dive_plot( u_obs_hat_np, u_obs_np,
+                            t_physics_np, V_in_np, W_pert_np,
+                            w_phy_hat_np, i_phy_hat_np, 
+                            dwdt_phy_hat_np, didt_phy_hat_np, d2wdt2_phy_hat_np,
+                            J_np, b_np, Kt_np, L_np, R_np, Ke_np, SAVE_DIR)
 
     print("\n\nGenerating Loss graphs...\n\n")
     generate_training_figures(inputs, track_constants, track_losses, SAVE_DIR)
