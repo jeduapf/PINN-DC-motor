@@ -8,18 +8,29 @@ if __name__ == "__main__":
     SAVE_DIR, SAVE_DIR_GIF = save_paths()
     DATA_DIR = r"C:\Users\jedua\Documents\INSA\Python\PINN\DC_SCRATCH"
 
-    # Control Variables
+    # Training Variables
+    N_data = 100
     N_training = 1000
-    N_data = int(1.2*N_training)
-    iterations = 20000
-    # random.seed(0)
-    # torch.manual_seed(123)
+    iterations = 500000
+    lambda1 = 10**3
+
+    # NN variables
+    Neurons = 80
+    Layers = 9
+    LR = 3.1*10**-5
+
+    # Random seeds
+    random.seed(0)
+    torch.manual_seed(123)
+
+    # Guessing variables
     infe = 1.5
     supe = 1.5
-    lambda1 = 10**3
-    T_TEST = 4500
-    figs = 99
-    NOISE = 0.00/100.0 # 0.01 % 
+
+    # Validation and analysis
+    T_TEST = 2000
+    figs = 279
+    NOISE = 0.0/100.0 # 0.01 % 
  
     inputs = {  "J":0.1,
                 "b":0.5,
@@ -31,6 +42,7 @@ if __name__ == "__main__":
                 "Tfinal": 5.,
                 "dist_intensity": 1.0*10**-3,
                 "SNR": 40} # In dB of maximum amplitude 
+
     outputs =['time', 'input', 'output']
 
     # Initial points for constants
@@ -71,7 +83,7 @@ if __name__ == "__main__":
 
     # define a neural network to train
     # N_INPUT, N_OUTPUT, N_HIDDEN, N_LAYERS
-    pinn = FCN(1,2,32,3)
+    pinn = FCN(1,2,Neurons,Layers)
 
     # treat Constants as learnable parameter
     J_nn = torch.nn.Parameter(torch.tensor([guess[0]], requires_grad=True))
@@ -82,7 +94,7 @@ if __name__ == "__main__":
     Ke_nn = torch.nn.Parameter(torch.tensor([guess[5]], requires_grad=True))
 
     opt_params = [J_nn, b_nn, Kt_nn, L_nn, R_nn, Ke_nn]
-    optimiser = torch.optim.Adam(list(pinn.parameters())+opt_params,lr=1e-3)
+    optimiser = torch.optim.Adam(list(pinn.parameters())+opt_params,lr=LR)
     
     files = []
     track_constants = []
