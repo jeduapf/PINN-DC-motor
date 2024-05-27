@@ -1,7 +1,7 @@
 from ze import *
 import os
 import random
-from tqdm import tqdm
+from tqdm.auto import tqdm, trange
 
 if __name__ == "__main__":
     set_cuda()
@@ -9,15 +9,17 @@ if __name__ == "__main__":
     DATA_DIR = r"C:\Users\jedua\Documents\INSA\Python\PINN\DC_SCRATCH"
 
     # Training Variables
-    N_data = 100
-    N_training = 1000
-    iterations = 500000
-    lambda1 = 10**3
+    N_data = 200
+    N_training = 2000
+    iterations = 1*10**4
+    lambda_f = 10**4
+    lambda_g = 10**0
+    lambda_d = 10**2
 
     # NN variables
-    Neurons = 80
+    Neurons = 90
     Layers = 9
-    LR = 3.1*10**-5
+    LR = 1*10**-4
 
     # Random seeds
     random.seed(0)
@@ -29,7 +31,7 @@ if __name__ == "__main__":
 
     # Validation and analysis
     T_TEST = 2000
-    figs = 279
+    figs = iterations/100
     NOISE = 0.0/100.0 # 0.01 % 
  
     inputs = {  "J":0.1,
@@ -41,7 +43,7 @@ if __name__ == "__main__":
                 "dt": 1.0*10**-3,
                 "Tfinal": 5.,
                 "dist_intensity": 1.0*10**-3,
-                "SNR": 40} # In dB of maximum amplitude 
+                "SNR": 60} # In dB of maximum amplitude 
 
     outputs =['time', 'input', 'output']
 
@@ -60,7 +62,7 @@ if __name__ == "__main__":
     ind = np.random.choice(range(X_star.shape[0]), N_data, replace=False).astype(int)
     t_obs_np =  X_star[ind,0]
     t_obs =  torch.tensor(t_obs_np, dtype = torch.float).view(-1,1)
-    u_obs = torch.tensor(u_star[ind,:]) + NOISE*torch.randn_like(torch.tensor(u_star[ind,:]))
+    u_obs = torch.tensor(u_star[ind,:]).view(-1,2) + NOISE*torch.randn_like(torch.tensor(u_star[ind,:])).view(-1,2)
     u_obs_np = u_obs.detach().cpu().numpy()
 
     # define training points over the entire domain (PHYSICS LOSS)
@@ -69,8 +71,8 @@ if __name__ == "__main__":
     t_physics = torch.tensor(t_physics_np, dtype = torch.float).view(-1,1).requires_grad_(True)
 
     # PUTTING W_pert and V_in AS A KNWON CONSTANT VALUE:
-    V_in = torch.tensor(X_star[idx,1])
-    W_pert = torch.tensor(X_star[idx,2])
+    V_in = torch.tensor(X_star[idx,1]).view(-1,1)
+    W_pert = torch.tensor(X_star[idx,2]).view(-1,1)
     V_in_np = V_in.detach().cpu().numpy()
     W_pert_np = W_pert.detach().cpu().numpy()
 
@@ -79,7 +81,7 @@ if __name__ == "__main__":
     t_test = torch.tensor(X_star[idc,0], dtype = torch.float).view(-1,1)
     t_test_np = X_star[idc,0]
     u_test_star_np = u_star[idc,:]
-    u_test_star = torch.tensor(u_star[idc,:])
+    u_test_star = torch.tensor(u_star[idc,:]).view(-1,2)
 
     # define a neural network to train
     # N_INPUT, N_OUTPUT, N_HIDDEN, N_LAYERS
@@ -94,12 +96,12 @@ if __name__ == "__main__":
     Ke_nn = torch.nn.Parameter(torch.tensor([guess[5]], requires_grad=True))
 
     opt_params = [J_nn, b_nn, Kt_nn, L_nn, R_nn, Ke_nn]
-    optimiser = torch.optim.Adam(list(pinn.parameters())+opt_params,lr=LR)
+    optimiser = torch.optim.Adam(list(pinn.parameters())+opt_params,lr=LR, betas=(0.95, 0.999))
     
     files = []
     track_constants = []
     track_losses = []
-    for i in tqdm(range(iterations)):
+    for i in trange(iterations):
         optimiser.zero_grad()
 
         # ----------------------------------------- compute physics loss -----------------------------------------
@@ -127,17 +129,18 @@ if __name__ == "__main__":
 
         loss_f = torch.mean((J_nn*d2wdt2_phy_hat + b_nn*dwdt_phy_hat - Kt_nn*i_phy_hat + W_pert)**2)
         loss_g = torch.mean((L_nn*didt_phy_hat + Ke_nn*dwdt_phy_hat + R_nn*i_phy_hat - V_in)**2)
-        loss1 = loss_f+loss_g
+
+        loss1 = lambda_f*loss_f+lambda_g*loss_g
 
         # ----------------------------------------- compute data loss -----------------------------------------
-        u_obs_hat = pinn(t_obs)
+        u_obs_hat = pinn(t_obs).view(-1,2)
         loss2 = torch.mean((u_obs_hat - u_obs)**2)
         
         # ----------------------------------------- compute total loss -----------------------------------------
-        loss = loss1 + lambda1*loss2
+        loss = lambda_d*loss1 + loss2
 
         # ----------------------------------------- Validation -----------------------------------------
-        u_test = pinn(t_test)
+        u_test = pinn(t_test).view(-1,2)
         test_loss = torch.mean((u_test-u_test_star)**2)
         # ----------------------------------------- Validation -----------------------------------------
 
@@ -161,6 +164,8 @@ if __name__ == "__main__":
 
         # plot the result as training progresses
         if i % figs == 0:
+            tqdm.write(f"{i}\n>>f: {track_losses[-1][0]:.4f} >>g: {track_losses[-1][1]:.4f} >>Data: {track_losses[-1][2]:.4f} >>Total: {track_losses[-1][3]:.4f}\n>>J: {track_constants[-1][0]:.3f} >>b: {track_constants[-1][1]:.3f} >>Kt: {track_constants[-1][2]:.3f} >>L: {track_constants[-1][3]:.3f} >>R: {track_constants[-1][4]:.3f} >>Ke: {track_constants[-1][5]:.3f}\n")
+
             u_test_np = u_test.detach().cpu().numpy()
             fig = save_plt(i, t_obs_np, u_obs_np, t_test_np, u_test_np, u_test_star_np, SAVE_DIR_GIF)
             file = os.path.join(SAVE_DIR_GIF,"pinn_%.8i.png"%(i+1))
@@ -191,7 +196,7 @@ if __name__ == "__main__":
             Ke_np = Ke_nn.item()
 
             deep_dive_plot( u_obs_hat_np, u_obs_np,
-                            t_physics_np, V_in_np, W_pert_np,
+                            t_physics_np, V_in_np.squeeze(), W_pert_np.squeeze(),
                             w_phy_hat_np, i_phy_hat_np, 
                             dwdt_phy_hat_np, didt_phy_hat_np, d2wdt2_phy_hat_np,
                             J_np, b_np, Kt_np, L_np, R_np, Ke_np, SAVE_DIR)
