@@ -13,7 +13,7 @@ def set_cuda():
 
     print(f"\nUsing device: \t**********************\t{device}\t**********************\n\n")
 
-class FCN(torch.nn.Module):
+class FNN(torch.nn.Module):
     "Defines a standard fully-connected network in PyTorch"
 
     def __init__(self, N_INPUT, N_OUTPUT, N_HIDDEN, N_LAYERS, SHOW = False):

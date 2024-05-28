@@ -7,6 +7,26 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 
+def DIRs(path_name = 'save_imgs', path_gif_name = 'gif'):
+    
+    current_dir = os.getcwd()
+    SAVE_DIR = os.path.join(current_dir,path_name)
+    try:
+        os.mkdir(SAVE_DIR)
+    except:
+        pass
+
+    if path_gif_name is not None:
+        SAVE_GIF_DIR = os.path.join(SAVE_DIR,path_gif_name)
+        try:
+            os.mkdir(SAVE_GIF_DIR)
+        except:
+            pass
+    else:
+        SAVE_GIF_DIR = None
+
+    return SAVE_DIR, SAVE_GIF_DIR
+
 def save_paths():
     current_dir = os.getcwd()
     SAVE_DIR = os.path.join(current_dir,'Results')
